@@ -1,0 +1,61 @@
+#!/usr/bin/env tclsh8.6
+#
+
+package require http
+package require tls
+package require tdom
+package require math::statistics
+
+
+::http::register https 443 ::tls::socket
+
+
+# helpers
+proc car { l } {
+    if { [llength $l] } { lindex $l 0 }
+}
+proc K { x y } { set x }
+proc fread { fname } { K [read [set fd [open $fname]]] [close $fd] }
+
+# download a webpage
+proc http_data { url } { http::data [http::geturl $url] }
+
+# extract comic # from url.
+proc url_comic_no { url } {
+    if { [regexp {\d+} $url num] > 0} {
+        return $num
+    }
+    return 0
+}
+
+# find the latest comic
+proc latest_comic_no { } {
+    dom parse [http_data https://xkcd.com/rss.xml] doc
+    
+    set linknodes [lmap n [$doc getElementsByTagName link] {
+        lindex [$n childNodes] 0
+    }]
+
+    car [lsort -decreasing [lmap node $linknodes { url_comic_no [$node nodeValue] }] ]
+}
+
+if { [llength $argv] == 0 } { set configs {normal 10 3 1} }
+
+# set the distribution function
+set pdf [lindex $argv 0]
+
+# set the arguments to the distribution function
+set configs [lrange $argv 1 end]
+
+# where we get the queue start from
+set queue_start_file ~/.readxkcdq
+set queue_start_no [fread $queue_start_file]
+
+set latest   [latest_comic_no]
+set qsize    [expr { $latest - $queue_start_no }]
+set capacity [math::statistics::random-$pdf {*}$configs]
+
+if { $qsize > $capacity } {
+    exec echo $latest > $queue_start_file
+    puts "time to read xkcd :)"
+}
